@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
+from urllib.parse import urlsplit, urlunsplit
 
 import pandas as pd
 
@@ -47,6 +48,10 @@ class SocialMediaCollector:
 
     def generate_mock_posts(self, keyword: str, hours: int = 48) -> list[dict[str, Any]]:
         """生成用于本地演示的模拟帖子。"""
+        if not keyword or not keyword.strip():
+            raise ValueError("keyword 不能为空")
+        if hours <= 0:
+            raise ValueError("hours 必须大于 0")
         collector_config = self.config.get("collector", {})
         sources = collector_config.get("sources", ["微博", "新闻评论", "论坛"])
         per_hour = int(collector_config.get("posts_per_hour", 24))
@@ -79,6 +84,12 @@ class SocialMediaCollector:
 
     def collect(self, keyword: str, hours: int = 48, mode: str = "mock") -> pd.DataFrame:
         """采集并返回去重、清洗后的标准化 DataFrame。"""
+        if not keyword or not keyword.strip():
+            raise ValueError("keyword 不能为空")
+        if hours <= 0:
+            raise ValueError("hours 必须大于 0")
+        if mode not in {"mock", "api"}:
+            raise ValueError("mode 必须是 mock 或 api")
         raw_rows = self.generate_mock_posts(keyword, hours) if mode == "mock" else self.fetch_from_api(keyword, hours)
         frame = self._normalize(raw_rows)
         ensure_project_dirs()
@@ -88,14 +99,16 @@ class SocialMediaCollector:
     def _normalize(self, rows: Iterable[dict[str, Any]]) -> pd.DataFrame:
         normalized: list[dict[str, Any]] = []
         for row in rows:
-            url = str(row.get("url", "")).strip()
+            url = self._canonical_url(row.get("url", ""))
             text = re.sub(r"\s+", " ", str(row.get("text", ""))).strip()
-            if not text or not url or url in self._seen_urls:
+            published_at = pd.to_datetime(row.get("published_at"), utc=True, errors="coerce")
+            if not text or not url or pd.isna(published_at) or url in self._seen_urls:
                 continue
             self._seen_urls.add(url)
-            published_at = pd.to_datetime(row.get("published_at"), utc=True, errors="coerce")
-            if pd.isna(published_at):
-                continue
+            try:
+                engagement = max(0, int(float(row.get("engagement", 0) or 0)))
+            except (TypeError, ValueError):
+                engagement = 0
             normalized.append({
                 "post_id": hashlib.sha1(url.encode("utf-8")).hexdigest()[:16],
                 "source": str(row.get("source", "unknown")),
@@ -103,14 +116,24 @@ class SocialMediaCollector:
                 "text": text,
                 "url": url,
                 "published_at": published_at,
-                "engagement": max(0, int(row.get("engagement", 0))),
+                "engagement": engagement,
             })
         return pd.DataFrame(normalized, columns=[
             "post_id", "source", "author", "text", "url", "published_at", "engagement"
         ])
 
+    @staticmethod
+    def _canonical_url(value: Any) -> str:
+        """统一 URL 的大小写和末尾斜杠，减少同一内容的重复记录。"""
+        raw_url = str(value or "").strip()
+        if not raw_url:
+            return ""
+        parts = urlsplit(raw_url)
+        if not parts.scheme or not parts.netloc:
+            return raw_url.rstrip("/")
+        return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), parts.query, ""))
+
 
 def collect_posts(keyword: str, hours: int = 48, mode: str = "mock") -> pd.DataFrame:
     """便捷采集入口。"""
     return SocialMediaCollector().collect(keyword, hours, mode)
-

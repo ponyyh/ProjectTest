@@ -28,6 +28,17 @@ streamlit run app/main.py
 
 首次运行会在 `data/03_processed/` 生成处理后的 CSV，并在 `reports/tables/` 生成汇总数据。
 
+看板支持下载情感明细、小时指标和预测结果 CSV。风险提示使用最近 3 小时的加权负面占比，以及最近一小时热度相对历史均值的倍数，减少单条异常数据造成的误报。
+
+## CLI 参数
+
+```bash
+python -m src.pipeline --keyword "品牌名称" --hours 72 --mode mock
+python -m src.pipeline --keyword "品牌名称" --config config/config.yaml
+```
+
+采集参数会校验关键词、时间范围和数据源模式；URL 会统一大小写与末尾斜杠，小时指标会补齐无帖子的时段。
+
 ## 目录结构
 
 ```text
@@ -62,4 +73,3 @@ Streamlit Community Cloud 和 Hugging Face Spaces 均可使用根目录的 `requ
 ## 免责声明
 
 本项目用于工程演示和原型验证。模拟数据不代表真实舆情；真实部署时请遵守目标平台服务条款、隐私保护和数据抓取相关法律法规。情绪分类结果不应作为唯一的危机决策依据。
-

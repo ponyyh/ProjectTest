@@ -49,17 +49,27 @@ if processed.empty:
 negative_ratio = float(processed["sentiment"].eq("negative").mean())
 recent_count = float(metrics["post_count"].tail(1).iloc[0])
 baseline = float(metrics["post_count"].mean())
+recent_window = metrics.tail(min(3, len(metrics)))
+recent_negative_ratio = float(
+    (recent_window["negative_ratio"] * recent_window["post_count"]).sum()
+    / max(1, recent_window["post_count"].sum())
+)
 negative_limit = float(config["forecast"]["negative_alert_ratio"])
 heat_limit = float(config["forecast"]["heat_alert_multiplier"])
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("帖子总量", f"{len(processed):,}")
-col2.metric("负面占比", f"{negative_ratio:.1%}", delta=f"阈值 {negative_limit:.0%}")
+col2.metric("负面占比", f"{negative_ratio:.1%}", delta=f"近 3 小时 {recent_negative_ratio:.1%}")
 col3.metric("平均情绪分", f"{processed['sentiment_score'].mean():.2f}")
 col4.metric("最近小时热度", f"{recent_count:.0f}", delta=f"基线 {baseline:.0f}")
 
-if negative_ratio >= negative_limit or (baseline and recent_count >= baseline * heat_limit):
-    st.error("⚠️ 触发舆情预警：请人工核查负面内容和热度来源。")
+alerts = []
+if recent_negative_ratio >= negative_limit:
+    alerts.append(f"近 3 小时负面占比 {recent_negative_ratio:.1%} 超过阈值")
+if baseline and recent_count >= baseline * heat_limit:
+    alerts.append(f"最近一小时热度 {recent_count:.0f} 达到历史均值 {baseline:.0f} 的 {recent_count / baseline:.1f} 倍")
+if alerts:
+    st.error("⚠️ 触发舆情预警：" + "；".join(alerts))
 else:
     st.success("✅ 当前指标未触发规则型预警。")
 
@@ -88,5 +98,19 @@ with right:
 
 st.subheader("最新舆情明细")
 display_columns = ["published_at", "source", "text", "sentiment", "sentiment_score", "engagement"]
-st.dataframe(processed.sort_values("published_at", ascending=False)[display_columns].head(100), hide_index=True, use_container_width=True)
+latest = processed.sort_values("published_at", ascending=False)[display_columns].head(100)
+st.dataframe(latest, hide_index=True, use_container_width=True)
 
+download_col1, download_col2, download_col3 = st.columns(3)
+download_col1.download_button(
+    "下载情感明细 CSV", processed.to_csv(index=False).encode("utf-8-sig"),
+    file_name="sentiment_posts.csv", mime="text/csv",
+)
+download_col2.download_button(
+    "下载小时指标 CSV", metrics.to_csv(index=False).encode("utf-8-sig"),
+    file_name="hourly_metrics.csv", mime="text/csv",
+)
+download_col3.download_button(
+    "下载预测结果 CSV", forecast.to_csv(index=False).encode("utf-8-sig"),
+    file_name="hourly_forecast.csv", mime="text/csv",
+)

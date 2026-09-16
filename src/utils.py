@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -31,10 +32,16 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     """读取 YAML 配置，并允许用环境变量覆盖 Redis 地址。"""
     config_path = Path(path) if path else PROJECT_ROOT / "config" / "config.yaml"
     if yaml is None:
-        config = DEFAULT_CONFIG.copy()
+        config = deepcopy(DEFAULT_CONFIG)
     else:
         with config_path.open("r", encoding="utf-8") as file:
-            config = yaml.safe_load(file) or {}
+            loaded = yaml.safe_load(file) or {}
+        config = deepcopy(DEFAULT_CONFIG)
+        for section, values in loaded.items():
+            if isinstance(values, dict) and isinstance(config.get(section), dict):
+                config[section].update(values)
+            else:
+                config[section] = values
     if os.getenv("REDIS_URL"):
         config.setdefault("collector", {})["redis_url"] = os.environ["REDIS_URL"]
     return config
