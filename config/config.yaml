@@ -1,0 +1,21 @@
+project_name: social-sentiment-monitor
+timezone: Asia/Shanghai
+collector:
+  default_mode: mock
+  default_hours: 48
+  posts_per_hour: 24
+  sources:
+    - 微博
+    - 新闻评论
+    - 视频平台
+    - 论坛
+nlp:
+  positive_threshold: 0.15
+  negative_threshold: -0.15
+  top_keywords: 15
+forecast:
+  horizon_hours: 24
+  history_hours: 48
+  negative_alert_ratio: 0.45
+  heat_alert_multiplier: 1.80
+
